@@ -43,6 +43,6 @@ npm run typecheck
 3. On the droplet: clone this repo, then run `bash deploy/setup-droplet.sh`. The first run creates `.env`; fill it in and run the script again.
 4. Open `https://plan.yourdomain.com`. Caddy gets the HTTPS certificate automatically.
 
-Update later with `bash deploy/update.sh`.
+Update later with `bash deploy/update.sh` (run on the droplet in the cloned repo).
 
 `GITHUB_TOKEN`: a classic token with the `repo` scope (simplest), or a fine-grained token with **Administration** (to create repos) and **Contents** read/write.
