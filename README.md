@@ -6,6 +6,8 @@ Model an app visually — screens, data, architecture — and export a spec that
 - **Screens:** one card per page, arrows for navigation, a list of what is on each screen.
 - **Data:** entities with typed fields, relations with cardinality.
 - **Architecture:** frontend, backend, databases, outside services.
+- **Acceptance criteria** on every card (`AC-n`, stable ids). Each must get an automated test that names it; the agent reports coverage in `VERIFY.md`.
+- **Playbooks:** reusable engineering standards (testing, patterns, workflow, tools, project skills). A "Default" playbook is seeded on first run; each plan picks one and can add its own rules.
 - **Spec & export:** a generated `SPEC.md` (with Mermaid diagrams), the gaps a builder would have to guess about, file downloads, and **Push to GitHub**.
 
 Installable as a PWA on desktop and phone (open the site, then "Install app" / "Add to Home Screen").
@@ -15,10 +17,13 @@ Installable as a PWA on desktop and phone (open the site, then "Install app" / "
 Push writes this to the repo (new repos are always **private**):
 
 ```
-AGENTS.md              # only created if missing: how to use the plan
-plan/SPEC.md           # human-readable spec, Mermaid diagrams, "Known gaps"
+AGENTS.md              # planner-managed block (rest of the file is kept): read order, definition of done
+CLAUDE.md              # imports AGENTS.md (Claude Code reads CLAUDE.md, not AGENTS.md)
+plan/SPEC.md           # what to build: screens, data, architecture, acceptance criteria, known gaps
+plan/RULES.md          # how to build: playbook + app rules + definition of done
 plan/plan.json         # the plan as structured data (source of truth)
 plan/plan.schema.json  # JSON Schema describing every field
+.claude/skills/*/SKILL.md  # the playbook's project skills (e.g. verify, plan-sync)
 ```
 
 Then start a Cloudroom thread with the prompt shown on the Spec tab.

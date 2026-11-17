@@ -6,6 +6,12 @@ import { z } from 'zod';
 
 const Position = z.object({ x: z.number(), y: z.number() });
 
+export const Criterion = z.object({
+  id: z.string().describe('Stable id like AC-12. Never reused, even if the criterion is deleted.'),
+  text: z.string().describe('Testable behaviour, ideally "Given … when … then …".'),
+});
+export type Criterion = z.infer<typeof Criterion>;
+
 const base = {
   id: z.string(),
   name: z.string().describe('Short display name.'),
@@ -14,6 +20,10 @@ const base = {
     .default('')
     .describe('Free text: purpose, business rules, edge cases, the "why". Most important field for the builder.'),
   position: Position.describe('Canvas position. Layout only; carries no meaning.'),
+  criteria: z
+    .array(z.lazy(() => Criterion))
+    .default([])
+    .describe('Acceptance criteria. Each one must be covered by at least one automated test that names its id.'),
 };
 
 export const ScreenNode = z
@@ -98,6 +108,9 @@ export const Plan = z
     nodes: z.array(PlanNode).default([]),
     edges: z.array(PlanEdge).default([]),
     repo: z.string().default('').describe('GitHub repo (owner/name) this plan is exported to.'),
+    playbookId: z.string().default('').describe('Planner-internal id of the engineering playbook used (exported as plan/RULES.md).'),
+    extraRules: z.string().default('').describe('Engineering rules specific to this app, added to the playbook. One per line.'),
+    acSeq: z.number().int().default(0).describe('Planner-internal counter for acceptance-criterion ids.'),
   })
   .describe('An application plan, written by a human for an LLM coding agent to build from.');
 
@@ -124,3 +137,28 @@ export function emptyPlan(name: string): Plan {
 export function planJsonSchema(): unknown {
   return z.toJSONSchema(Plan, { io: 'input' });
 }
+
+// ---------------------------------------------------------------------------
+// Playbooks: reusable engineering standards (tests, patterns, workflow, skills)
+// shared by many plans. Exported as plan/RULES.md and .claude/skills/*.
+
+export const Skill = z.object({
+  name: z.string().describe('kebab-case, becomes .claude/skills/<name>/SKILL.md'),
+  description: z.string().describe('When the agent should use this skill.'),
+  body: z.string().describe('Step-by-step instructions (markdown).'),
+});
+export type Skill = z.infer<typeof Skill>;
+
+export const Playbook = z.object({
+  schemaVersion: z.literal(1),
+  name: z.string(),
+  description: z.string().default(''),
+  testing: z.string().default('').describe('Testing & quality rules, one per line.'),
+  patterns: z.string().default('').describe('Code & design patterns, one per line.'),
+  workflow: z.string().default('').describe('How to work: milestones, commits, when to ask. One per line.'),
+  tools: z.string().default('').describe('Existing skills / tools to use and when. One per line.'),
+  skills: z.array(Skill).default([]).describe('Project skills written into the repo.'),
+});
+export type Playbook = z.infer<typeof Playbook>;
+
+export const SKILL_NAME = /^[a-z0-9]+(-[a-z0-9]+)*$/;

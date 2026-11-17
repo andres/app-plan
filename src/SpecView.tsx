@@ -1,14 +1,15 @@
-import { useMemo, useState } from 'react';
-import type { Plan } from '../shared/schema.ts';
-import { exportFiles, agentsMd } from '../shared/spec.ts';
+import { useEffect, useMemo, useState } from 'react';
+import type { Plan, Playbook } from '../shared/schema.ts';
+import { exportAll } from '../shared/spec.ts';
+import { zip } from './zip.ts';
 import { api, type Config } from './api.ts';
 import type { Update } from './Editor.tsx';
 
 const slug = (s: string) => s.toLowerCase().replace(/^example:\s*/, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'app';
 
-function download(name: string, content: string) {
+function download(name: string, content: string | Blob) {
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([content], { type: 'text/plain' }));
+  a.href = URL.createObjectURL(typeof content === 'string' ? new Blob([content], { type: 'text/plain' }) : content);
   a.download = name;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
@@ -26,14 +27,20 @@ async function copy(text: string, done: (msg: string) => void) {
 export function SpecView({ id, plan, gaps, config, update, saveNow }: {
   id: string; plan: Plan; gaps: string[]; config: Config; update: Update; saveNow: () => Promise<void>;
 }) {
-  const files = useMemo(() => exportFiles(plan), [plan]);
+  const [playbook, setPlaybook] = useState<Playbook | null>(null);
+  useEffect(() => {
+    if (!plan.playbookId) return setPlaybook(null);
+    api.playbooks.get(plan.playbookId).then((r) => setPlaybook(r.doc), () => setPlaybook(null));
+  }, [plan.playbookId]);
+  const files = useMemo(() => exportAll(plan, playbook), [plan, playbook]);
+  const [preview, setPreview] = useState('plan/SPEC.md');
   const spec = files['plan/SPEC.md'];
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
   const [pushed, setPushed] = useState<{ url: string; created: boolean } | null>(null);
   const repo = plan.repo || (config.githubOwner ? `${config.githubOwner}/${slug(plan.name)}` : '');
   const prompt = repo
-    ? `Clone https://github.com/${repo} and build the app it describes. Start by reading AGENTS.md and plan/SPEC.md. Ask me about anything listed under "Known gaps" before building it.`
+    ? `Clone https://github.com/${repo} and build the app it describes. Follow AGENTS.md: read plan/RULES.md (how to build, including tests) and plan/SPEC.md (what to build). Ask me about anything under "Known gaps" before building it. Work milestone by milestone and run the verify skill before saying a milestone is done.`
     : '';
 
   const push = async () => {
@@ -77,7 +84,7 @@ export function SpecView({ id, plan, gaps, config, update, saveNow }: {
               <button className="primary" disabled={busy || !repo} onClick={push}>{busy ? 'Pushing…' : 'Push to GitHub'}</button>
             </div>
             <p className="muted small">
-              Writes <code>plan/SPEC.md</code>, <code>plan/plan.json</code>, <code>plan/plan.schema.json</code>, and <code>AGENTS.md</code> if the repo has none. New repos are always private.
+              Overwrites <code>plan/</code> and the playbook's skills in <code>.claude/skills/</code>. Updates only the planner's block in <code>AGENTS.md</code> and makes sure <code>CLAUDE.md</code> imports it, so anything else there is kept. New repos are always private.
             </p>
             {pushed && <p><a href={pushed.url} target="_blank" rel="noreferrer">{pushed.url}</a></p>}
           </>
@@ -96,18 +103,17 @@ export function SpecView({ id, plan, gaps, config, update, saveNow }: {
 
       <section>
         <h3>Files</h3>
+        {!playbook && <p className="muted small">No playbook selected (Overview tab), so RULES.md only has the basics.</p>}
         <div className="row wrap">
+          <button className="primary" onClick={() => download(`${slug(plan.name)}-plan.zip`, zip(files))}>Download all (.zip)</button>
           <button onClick={() => copy(spec, setMsg)}>Copy SPEC.md</button>
-          <button onClick={() => download('SPEC.md', spec)}>SPEC.md</button>
-          <button onClick={() => download('plan.json', files['plan/plan.json'])}>plan.json</button>
-          <button onClick={() => download('plan.schema.json', files['plan/plan.schema.json'])}>plan.schema.json</button>
-          <button onClick={() => download('AGENTS.md', agentsMd(plan))}>AGENTS.md</button>
         </div>
-      </section>
-
-      <section>
-        <h3>SPEC.md preview</h3>
-        <pre className="spec-preview">{spec}</pre>
+        <div className="row wrap file-tabs">
+          {Object.keys(files).map((f) => (
+            <button key={f} className={`small ${preview === f ? 'active' : ''}`} onClick={() => setPreview(f)}>{f}</button>
+          ))}
+        </div>
+        <pre className="spec-preview">{files[preview] ?? ''}</pre>
       </section>
     </div>
   );

@@ -132,6 +132,7 @@ function NodeForm({ node, plan, update, close }: { node: PlanNode; plan: Plan; u
         <span>Notes <em className="muted">rules, edge cases, the why</em></span>
         <textarea rows={6} value={node.notes} onChange={(e) => set({ notes: e.target.value })} />
       </label>
+      <CriteriaEditor node={node} update={update} />
       <button className="danger" onClick={remove}>Delete {node.kind}</button>
     </aside>
   );
@@ -217,5 +218,42 @@ function EdgeForm({ edge, plan, update, close }: { edge: PlanEdge; plan: Plan; u
         Delete connection
       </button>
     </aside>
+  );
+}
+
+function CriteriaEditor({ node, update }: { node: PlanNode; update: Update }) {
+  const setCriteria = (fn: (cs: PlanNode['criteria']) => PlanNode['criteria']) =>
+    update((p) => ({
+      ...p,
+      nodes: p.nodes.map((n) => (n.id === node.id ? { ...n, criteria: fn(n.criteria) } : n)),
+    }));
+  const add = () =>
+    update((p) => {
+      const id = `AC-${p.acSeq + 1}`;
+      return {
+        ...p,
+        acSeq: p.acSeq + 1,
+        nodes: p.nodes.map((n) => (n.id === node.id ? { ...n, criteria: [...n.criteria, { id, text: '' }] } : n)),
+      };
+    });
+  return (
+    <div className="field">
+      <span>Acceptance criteria <em className="muted">each becomes an automated test</em></span>
+      {node.criteria.map((c, i) => (
+        <div className="criterion" key={c.id}>
+          <code>{c.id}</code>
+          <textarea
+            rows={Math.max(2, Math.ceil(c.text.length / 34) + c.text.split('\n').length - 1)}
+            placeholder="Given … when … then …"
+            value={c.text}
+            onChange={(e) => { const text = e.target.value; setCriteria((cs) => cs.map((x, j) => (j === i ? { ...x, text } : x))); }}
+          />
+          <button className="ghost danger" title="Remove criterion" onClick={() => setCriteria((cs) => cs.filter((_, j) => j !== i))}>×</button>
+        </div>
+      ))}
+      <div>
+        <button onClick={add}>+ Criterion</button>
+      </div>
+    </div>
   );
 }

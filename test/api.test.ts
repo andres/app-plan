@@ -51,3 +51,20 @@ test('push without GitHub configured explains why', async () => {
   assert.equal(r.status, 400);
   assert.match((await r.json()).error, /GITHUB_TOKEN/);
 });
+
+test('playbooks: default is seeded and new plans use it', async () => {
+  const app = setup();
+  const pbs = await (await app.request('/api/playbooks')).json();
+  assert.equal(pbs.length, 1);
+  assert.equal(pbs[0].name, 'Default');
+  const { id } = await (await app.request('/api/plans', json('POST', { name: 'A' }))).json();
+  const got = await (await app.request(`/api/plans/${id}`)).json();
+  assert.equal(got.plan.playbookId, pbs[0].id);
+
+  const pb = await (await app.request(`/api/playbooks/${pbs[0].id}`)).json();
+  assert.ok(pb.playbook.skills.some((k: { name: string }) => k.name === 'verify'));
+  const saved = await app.request(`/api/playbooks/${pbs[0].id}`, json('PUT', { rev: pb.rev, playbook: { ...pb.playbook, name: 'Mine' } }));
+  assert.deepEqual(await saved.json(), { rev: 2 });
+  const created = await (await app.request('/api/playbooks', json('POST', { name: 'Strict' }))).json();
+  assert.equal(created.name, 'Strict');
+});

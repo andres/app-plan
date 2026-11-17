@@ -6,10 +6,11 @@ import { bodyLimit } from 'hono/body-limit';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { readFileSync, existsSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { openDb, type Db } from './db.ts';
+import { openDb, type Db, type DocTable } from './db.ts';
 import { pushToGitHub } from './github.ts';
-import { Plan } from '../shared/schema.ts';
-import { exportFiles, agentsMd } from '../shared/spec.ts';
+import type { z } from 'zod';
+import { Plan, Playbook } from '../shared/schema.ts';
+import { buildExport } from '../shared/spec.ts';
 
 export type Config = {
   password?: string; // unset = no login (local dev only)
@@ -56,53 +57,58 @@ export function createApp(db: Db, cfg: Config) {
     await next();
   });
 
-  app.get('/api/plans', (c) => c.json(db.list()));
-
-  app.post('/api/plans', async (c) => {
-    const body = await c.req.json<{ name?: string; plan?: unknown }>().catch(() => ({}) as { name?: string; plan?: unknown });
-    let plan: Plan | undefined;
-    if (body.plan !== undefined) {
-      const parsed = Plan.safeParse(body.plan);
-      if (!parsed.success) return c.json({ error: 'Invalid plan', issues: parsed.error.issues }, 400);
-      plan = parsed.data;
-    }
-    const name = (body.name ?? plan?.name ?? '').trim() || 'Untitled app';
-    return c.json(db.create(name, plan), 201);
-  });
-
-  app.get('/api/plans/:id', (c) => {
-    const row = db.get(c.req.param('id'));
-    return row ? c.json(row) : c.json({ error: 'Not found' }, 404);
-  });
-
-  app.put('/api/plans/:id', async (c) => {
-    const body = await c.req.json<{ rev: number; plan: unknown }>().catch(() => null);
-    if (!body || typeof body.rev !== 'number') return c.json({ error: 'Body must be { rev, plan }' }, 400);
-    const parsed = Plan.safeParse(body.plan);
-    if (!parsed.success) return c.json({ error: 'Invalid plan', issues: parsed.error.issues }, 400);
-    const id = c.req.param('id');
-    if (!db.get(id)) return c.json({ error: 'Not found' }, 404);
-    const rev = db.save(id, body.rev, parsed.data);
-    if (rev === null) return c.json({ error: 'This plan was changed on another device. Reload to get the latest.' }, 409);
-    return c.json({ rev });
-  });
-
-  app.delete('/api/plans/:id', (c) => (db.remove(c.req.param('id')) ? c.json({ ok: true }) : c.json({ error: 'Not found' }, 404)));
+  // Same CRUD shape for plans and playbooks: GET list, POST create, GET/PUT(rev)/DELETE one.
+  const crud = <D extends { name: string }>(path: string, key: string, table: DocTable<D>,
+    schema: z.ZodType<D>, create: (name: string, doc?: D) => unknown, label: string) => {
+    app.get(`/api/${path}`, (c) => c.json(table.list()));
+    app.post(`/api/${path}`, async (c) => {
+      const body = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
+      let doc: D | undefined;
+      if (body[key] !== undefined) {
+        const parsed = schema.safeParse(body[key]);
+        if (!parsed.success) return c.json({ error: `Invalid ${key}`, issues: parsed.error.issues }, 400);
+        doc = parsed.data;
+      }
+      const name = (String(body.name ?? '') || doc?.name || '').trim() || label;
+      return c.json(create(name, doc), 201);
+    });
+    app.get(`/api/${path}/:id`, (c) => {
+      const row = table.get(c.req.param('id'));
+      if (!row) return c.json({ error: 'Not found' }, 404);
+      const { doc, ...meta } = row;
+      return c.json({ ...meta, [key]: doc });
+    });
+    app.put(`/api/${path}/:id`, async (c) => {
+      const body = await c.req.json<Record<string, unknown>>().catch(() => null);
+      if (!body || typeof body.rev !== 'number') return c.json({ error: `Body must be { rev, ${key} }` }, 400);
+      const parsed = schema.safeParse(body[key]);
+      if (!parsed.success) return c.json({ error: `Invalid ${key}`, issues: parsed.error.issues }, 400);
+      const id = c.req.param('id');
+      if (!table.get(id)) return c.json({ error: 'Not found' }, 404);
+      const rev = table.save(id, body.rev, parsed.data);
+      if (rev === null) return c.json({ error: 'This was changed on another device. Reload to get the latest.' }, 409);
+      return c.json({ rev });
+    });
+    app.delete(`/api/${path}/:id`, (c) => (table.remove(c.req.param('id')) ? c.json({ ok: true }) : c.json({ error: 'Not found' }, 404)));
+  };
+  crud('plans', 'plan', db.plans, Plan, (name, plan) => db.newPlan(name, plan), 'Untitled app');
+  crud('playbooks', 'playbook', db.playbooks, Playbook,
+    (name, pb) => db.playbooks.create({ ...(pb ?? Playbook.parse({ schemaVersion: 1, name })), name }), 'New playbook');
 
   app.post('/api/plans/:id/push', async (c) => {
     if (!cfg.githubToken) return c.json({ error: 'GitHub is not configured on the server (GITHUB_TOKEN).' }, 400);
-    const row = db.get(c.req.param('id'));
+    const row = db.plans.get(c.req.param('id'));
     if (!row) return c.json({ error: 'Not found' }, 404);
+    const plan = row.doc;
     const body = await c.req.json<{ repo?: string }>().catch(() => ({}) as { repo?: string });
-    const repo = (body.repo ?? row.plan.repo).trim();
+    const repo = (body.repo ?? plan.repo).trim();
     if (!repo) return c.json({ error: 'Set a repo (owner/name) first.' }, 400);
+    const playbook = plan.playbookId ? db.playbooks.get(plan.playbookId)?.doc ?? null : null;
     try {
+      const { files, merges } = buildExport(plan, playbook);
       const res = await pushToGitHub({
-        token: cfg.githubToken,
-        repo,
-        files: exportFiles(row.plan),
-        createIfMissing: { 'AGENTS.md': agentsMd(row.plan) },
-        message: `Update plan: ${row.plan.name} (rev ${row.rev})`,
+        token: cfg.githubToken, repo, files, merges,
+        message: `Update plan: ${plan.name} (rev ${row.rev})`,
       });
       return c.json(res);
     } catch (e) {

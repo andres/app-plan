@@ -29,7 +29,7 @@ function ScreenCard({ data, selected }: NodeProps<RFNode>) {
     <div className={`card screen ${selected ? 'selected' : ''}`}>
       <Handles />
       <div className="card-kind">Screen{n.route && <code>{n.route}</code>}</div>
-      <div className="card-title">{n.name || 'Untitled'}</div>
+      <div className="card-title">{n.name || 'Untitled'}<AcBadge n={n} /></div>
       {items.length > 0 && (
         <ul className="card-list">
           {items.slice(0, 6).map((c, i) => <li key={i}>{c}</li>)}
@@ -46,7 +46,7 @@ function EntityCard({ data, selected }: NodeProps<RFNode>) {
   return (
     <div className={`card entity ${selected ? 'selected' : ''}`}>
       <Handles />
-      <div className="card-title">{n.name || 'Untitled'}</div>
+      <div className="card-title">{n.name || 'Untitled'}<AcBadge n={n} /></div>
       <table className="fields">
         <tbody>
           {n.fields.map((f, i) => (
@@ -70,10 +70,15 @@ function ComponentCard({ data, selected }: NodeProps<RFNode>) {
     <div className={`card component type-${n.type} ${selected ? 'selected' : ''}`}>
       <Handles />
       <div className="card-kind">{look.label}</div>
-      <div className="card-title">{n.name || 'Untitled'}</div>
+      <div className="card-title">{n.name || 'Untitled'}<AcBadge n={n} /></div>
       {n.tech && <div className="muted small">{n.tech}</div>}
     </div>
   );
+}
+
+function AcBadge({ n }: { n: PlanNode }) {
+  const c = n.criteria.filter((x) => x.text.trim()).length;
+  return c ? <span className="ac-badge" title="Acceptance criteria">{c} AC</span> : null;
 }
 
 const nodeTypes = { screen: ScreenCard, entity: EntityCard, component: ComponentCard };
@@ -94,17 +99,17 @@ function edgeLabel(e: PlanEdge) {
 /** What the "+" buttons create in each view. */
 function palette(view: View): { label: string; make: (id: string, position: { x: number; y: number }) => PlanNode }[] {
   if (view === 'screens') {
-    return [{ label: '+ Screen', make: (id, position) => ({ id, kind: 'screen', name: 'New screen', notes: '', position, route: '', roles: [], components: [] }) }];
+    return [{ label: '+ Screen', make: (id, position) => ({ id, kind: 'screen', name: 'New screen', notes: '', criteria: [], position, route: '', roles: [], components: [] }) }];
   }
   if (view === 'data') {
     return [{
       label: '+ Entity',
-      make: (id, position) => ({ id, kind: 'entity', name: 'NewEntity', notes: '', position, fields: [{ name: 'name', type: 'string', required: true, notes: '' }] }),
+      make: (id, position) => ({ id, kind: 'entity', name: 'NewEntity', notes: '', criteria: [], position, fields: [{ name: 'name', type: 'string', required: true, notes: '' }] }),
     }];
   }
   return (['actor', 'frontend', 'backend', 'database', 'external'] as const).map((type) => ({
     label: `+ ${COMPONENT_LOOK[type].label.split(' /')[0]}`,
-    make: (id, position) => ({ id, kind: 'component', type, name: COMPONENT_LOOK[type].label.split(' /')[0], notes: '', position, tech: '' }),
+    make: (id, position) => ({ id, kind: 'component', type, name: COMPONENT_LOOK[type].label.split(' /')[0], notes: '', criteria: [], position, tech: '' }),
   }));
 }
 

@@ -110,3 +110,10 @@ input[type='checkbox'] { width: auto; accent-color: var(--accent); }
 .react-flow__controls-button svg { fill: var(--text); max-width: 14px; max-height: 14px; }
 .react-flow__attribution { background: transparent; }
 .react-flow__attribution a { color: var(--muted); }
+h2 { font-size: 16px; margin: 0; }
+.file-tabs button.active { border-color: var(--accent); color: var(--accent); }
+.criterion { display: grid; grid-template-columns: auto 1fr auto; gap: 6px; align-items: start; }
+.criterion code { padding-top: 8px; color: var(--accent); font-size: 12px; }
+.skill { display: flex; flex-direction: column; gap: 6px; padding: 10px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; }
+.skill textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+.ac-badge { font-size: 10px; color: var(--green); border: 1px solid #275a43; border-radius: 8px; padding: 0 5px; margin-left: 4px; }

@@ -1,8 +1,9 @@
 import { useEffect, useState, useCallback, type FormEvent } from 'react';
-import { api, type Config, type PlanRow } from './api.ts';
+import { api, type Config, type Row } from './api.ts';
 import { Plan } from '../shared/schema.ts';
 import { examplePlan } from '../shared/example.ts';
 import { Editor } from './Editor.tsx';
+import { PlaybookEditor } from './PlaybookEditor.tsx';
 
 function useHash() {
   const [hash, setHash] = useState(location.hash);
@@ -24,8 +25,10 @@ export function App() {
   if (error) return <div className="center">Can't reach the server: {error}</div>;
   if (!config) return <div className="center muted">Loading…</div>;
   if (config.authRequired && !config.authed) return <Login onDone={load} />;
-  const m = /^#\/plan\/([\w-]+)$/.exec(hash);
-  return m ? <Editor key={m[1]} id={m[1]} config={config} /> : <PlanList config={config} onLogout={load} />;
+  const m = /^#\/(plan|playbook)\/([\w-]+)$/.exec(hash);
+  if (m?.[1] === 'plan') return <Editor key={m[2]} id={m[2]} config={config} />;
+  if (m?.[1] === 'playbook') return <PlaybookEditor key={m[2]} id={m[2]} />;
+  return <PlanList config={config} onLogout={load} />;
 }
 
 function Login({ onDone }: { onDone: () => void }) {
@@ -57,10 +60,14 @@ function Login({ onDone }: { onDone: () => void }) {
 }
 
 function PlanList({ config, onLogout }: { config: Config; onLogout: () => void }) {
-  const [plans, setPlans] = useState<PlanRow[] | null>(null);
+  const [plans, setPlans] = useState<Row[] | null>(null);
+  const [playbooks, setPlaybooks] = useState<Row[] | null>(null);
   const [name, setName] = useState('');
   const [error, setError] = useState('');
-  const refresh = useCallback(() => api.list().then(setPlans, (e) => setError(e.message)), []);
+  const refresh = useCallback(() => Promise.all([
+    api.plans.list().then(setPlans),
+    api.playbooks.list().then(setPlaybooks),
+  ]).catch((e) => setError(e.message)), []);
   useEffect(() => void refresh(), [refresh]);
 
   const open = (id: string) => (location.hash = `#/plan/${id}`);
@@ -74,13 +81,13 @@ function PlanList({ config, onLogout }: { config: Config; onLogout: () => void }
   };
   const create = (e: FormEvent) => {
     e.preventDefault();
-    run(async () => open((await api.create(name.trim() || 'Untitled app')).id));
+    run(async () => open((await api.plans.create(name.trim() || 'Untitled app')).id));
   };
   const importFile = (file: File) =>
     run(async () => {
       const parsed = Plan.safeParse(JSON.parse(await file.text()));
       if (!parsed.success) throw new Error(`Not a valid plan.json: ${parsed.error.issues[0]?.message}`);
-      open((await api.create(parsed.data.name, parsed.data)).id);
+      open((await api.plans.create(parsed.data.name, parsed.data)).id);
     });
 
   return (
@@ -99,7 +106,7 @@ function PlanList({ config, onLogout }: { config: Config; onLogout: () => void }
         <button className="primary">Create</button>
       </form>
       <div className="row muted small">
-        <button onClick={() => run(async () => open((await api.create('Example: Class booking', examplePlan())).id))}>
+        <button onClick={() => run(async () => open((await api.plans.create('Example: Class booking', examplePlan())).id))}>
           Open an example
         </button>
         <label className="button">
@@ -124,7 +131,7 @@ function PlanList({ config, onLogout }: { config: Config; onLogout: () => void }
               <button
                 className="ghost danger"
                 title="Delete plan"
-                onClick={() => confirm(`Delete "${p.name}"? This cannot be undone.`) && run(async () => { await api.remove(p.id); await refresh(); })}
+                onClick={() => confirm(`Delete "${p.name}"? This cannot be undone.`) && run(async () => { await api.plans.remove(p.id); await refresh(); })}
               >
                 Delete
               </button>
@@ -132,6 +139,33 @@ function PlanList({ config, onLogout }: { config: Config; onLogout: () => void }
           ))}
         </ul>
       )}
+
+      <div className="list-header">
+        <h2>Playbooks</h2>
+        <span className="muted small">Your engineering standards: tests, patterns, workflow, skills.</span>
+      </div>
+      {playbooks && (
+        <ul className="plan-list">
+          {playbooks.map((p) => (
+            <li key={p.id}>
+              <a href={`#/playbook/${p.id}`}>
+                <strong>{p.name}</strong>
+                <span className="muted small">Edited {new Date(p.updatedAt).toLocaleString()}</span>
+              </a>
+              <button
+                className="ghost danger"
+                title="Delete playbook"
+                onClick={() => confirm(`Delete playbook "${p.name}"? Plans using it will export without rules.`) && run(async () => { await api.playbooks.remove(p.id); await refresh(); })}
+              >
+                Delete
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div>
+        <button onClick={() => run(async () => { location.hash = `#/playbook/${(await api.playbooks.create('New playbook')).id}`; })}>+ Playbook</button>
+      </div>
     </div>
   );
 }

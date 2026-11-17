@@ -7,10 +7,10 @@ export async function pushToGitHub(opts: {
   token: string;
   repo: string; // owner/name
   files: Files; // always written
-  createIfMissing: Files; // only written if the path does not exist yet
+  merges: Record<string, (existing: string | null) => string>; // combined with the file already in the repo
   message: string;
 }): Promise<{ url: string; commit: string; created: boolean }> {
-  const { token, files, createIfMissing, message } = opts;
+  const { token, files, merges, message } = opts;
   const m = /^([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+)$/.exec(opts.repo.trim());
   if (!m) throw new Error('Repo must look like owner/name.');
   const [, owner, name] = m;
@@ -62,10 +62,12 @@ export async function pushToGitHub(opts: {
   if (parent.status !== 200) throw fail('commit lookup', parent);
 
   const all: Files = { ...files };
-  for (const [path, content] of Object.entries(createIfMissing)) {
-    const exists = await gh('GET', `/repos/${owner}/${name}/contents/${path}?ref=${branch}`);
-    if (exists.status === 404) all[path] = content;
-    else if (exists.status !== 200) throw fail(`check ${path}`, exists);
+  for (const [path, merge] of Object.entries(merges)) {
+    const cur = await gh('GET', `/repos/${owner}/${name}/contents/${path}?ref=${branch}`);
+    if (cur.status !== 200 && cur.status !== 404) throw fail(`read ${path}`, cur);
+    const existing = cur.status === 200 ? Buffer.from(cur.data.content ?? '', 'base64').toString('utf8') : null;
+    const next = merge(existing);
+    if (next !== existing) all[path] = next;
   }
 
   const tree = await gh('POST', `/repos/${owner}/${name}/git/trees`, {

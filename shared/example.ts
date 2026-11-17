@@ -10,17 +10,31 @@ export function examplePlan(): Plan {
     goals: 'Members can book a class in under 30 seconds on a phone\nNo double-booking when a class is full\nOwner sees revenue per week',
     nonGoals: 'Memberships / subscriptions (pay per class only)\nNative mobile apps',
     constraints: 'Mobile-first web app (PWA)\nPayments with Stripe Checkout\nHost on a single small server',
+    acSeq: 8,
     roles: [
       { name: 'Member', description: 'Books and pays for classes.' },
       { name: 'Coach', description: 'Sees attendee lists for their classes.' },
       { name: 'Admin', description: 'Gym owner. Manages classes and coaches.' },
     ],
     nodes: [
-      { id: 's1', kind: 'screen', name: 'Sign in', position: { x: 0, y: 0 }, route: '/login', components: ['Email field', 'Send magic link button'], notes: 'Passwordless: magic link by email.' },
-      { id: 's2', kind: 'screen', name: 'Schedule', position: { x: 260, y: 0 }, route: '/', roles: ['Member', 'Coach', 'Admin'], components: ['Week picker', 'List of classes per day: time, name, coach, spots left'], notes: 'Full classes are shown greyed out with "Full".' },
-      { id: 's3', kind: 'screen', name: 'Class detail', position: { x: 520, y: 0 }, route: '/classes/:id', roles: ['Member'], components: ['Class name, time, coach, description', 'Price', 'Book & pay button'], notes: 'If the member already booked: show "Booked" and a Cancel button (free cancel until 12h before).' },
-      { id: 's4', kind: 'screen', name: 'My bookings', position: { x: 520, y: 200 }, route: '/me', roles: ['Member'], components: ['Upcoming bookings', 'Past bookings'] },
-      { id: 's5', kind: 'screen', name: 'Manage classes', position: { x: 260, y: 200 }, route: '/admin/classes', roles: ['Admin'], components: ['Table of classes', 'New class form: name, coach, start, duration, capacity, price'] },
+      { id: 's1', kind: 'screen', name: 'Sign in', position: { x: 0, y: 0 }, route: '/login', components: ['Email field', 'Send magic link button'], notes: 'Passwordless: magic link by email.', criteria: [
+        { id: 'AC-1', text: 'Given a registered email, when I request a link and open it, then I am signed in and land on Schedule.' },
+        { id: 'AC-2', text: 'Given a link older than 15 minutes, when I open it, then I see "Link expired" and can request a new one.' },
+      ] },
+      { id: 's2', kind: 'screen', name: 'Schedule', position: { x: 260, y: 0 }, route: '/', roles: ['Member', 'Coach', 'Admin'], components: ['Week picker', 'List of classes per day: time, name, coach, spots left'], notes: 'Full classes are shown greyed out with "Full".', criteria: [
+        { id: 'AC-3', text: 'Given a class with no spots left, when I view the schedule, then it shows "Full" and cannot be opened for booking.' },
+      ] },
+      { id: 's3', kind: 'screen', name: 'Class detail', position: { x: 520, y: 0 }, route: '/classes/:id', roles: ['Member'], components: ['Class name, time, coach, description', 'Price', 'Book & pay button'], notes: 'If the member already booked: show "Booked" and a Cancel button (free cancel until 12h before).', criteria: [
+        { id: 'AC-4', text: 'Given a class with spots, when I tap Book & pay and complete Stripe Checkout, then my booking is confirmed and shows in My bookings.' },
+        { id: 'AC-5', text: 'Given two members paying for the last spot at the same time, then only one booking is confirmed and the other is refunded.' },
+        { id: 'AC-6', text: 'Given a confirmed booking more than 12h ahead, when I cancel, then it is cancelled and refunded.' },
+      ] },
+      { id: 's4', kind: 'screen', name: 'My bookings', position: { x: 520, y: 200 }, route: '/me', roles: ['Member'], components: ['Upcoming bookings', 'Past bookings'], criteria: [
+        { id: 'AC-7', text: 'I only ever see my own bookings, never another member\'s.' },
+      ] },
+      { id: 's5', kind: 'screen', name: 'Manage classes', position: { x: 260, y: 200 }, route: '/admin/classes', roles: ['Admin'], components: ['Table of classes', 'New class form: name, coach, start, duration, capacity, price'], criteria: [
+        { id: 'AC-8', text: 'Given I am not an Admin, when I open /admin/classes or call its API, then I get a 403.' },
+      ] },
       { id: 'e1', kind: 'entity', name: 'User', position: { x: 0, y: 0 }, fields: [
         { name: 'email', type: 'email', required: true, notes: 'unique' },
         { name: 'name', type: 'string', required: true },

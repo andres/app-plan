@@ -1,6 +1,6 @@
-import type { Plan } from '../shared/schema.ts';
+import type { Plan, Playbook } from '../shared/schema.ts';
 
-export type PlanRow = { id: string; name: string; rev: number; updatedAt: string };
+export type Row = { id: string; name: string; rev: number; updatedAt: string };
 export type Config = { authRequired: boolean; authed: boolean; github: boolean; githubOwner: string };
 
 export class ApiError extends Error {
@@ -23,14 +23,22 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
   return data as T;
 }
 
+/** Same REST shape for plans and playbooks. */
+function docs<D>(path: string, key: string) {
+  return {
+    list: () => call<Row[]>('GET', `/${path}`),
+    create: (name: string, doc?: D) => call<Row>('POST', `/${path}`, { name, [key]: doc }),
+    get: (id: string) => call<Row & Record<string, D>>('GET', `/${path}/${id}`).then((r) => ({ rev: r.rev, doc: r[key] as D })),
+    save: (id: string, rev: number, doc: D) => call<{ rev: number }>('PUT', `/${path}/${id}`, { rev, [key]: doc }),
+    remove: (id: string) => call<{ ok: true }>('DELETE', `/${path}/${id}`),
+  };
+}
+
 export const api = {
   config: () => call<Config>('GET', '/config'),
   login: (password: string) => call<{ ok: true }>('POST', '/login', { password }),
   logout: () => call<{ ok: true }>('POST', '/logout'),
-  list: () => call<PlanRow[]>('GET', '/plans'),
-  create: (name: string, plan?: Plan) => call<PlanRow>('POST', '/plans', { name, plan }),
-  get: (id: string) => call<PlanRow & { plan: Plan }>('GET', `/plans/${id}`),
-  save: (id: string, rev: number, plan: Plan) => call<{ rev: number }>('PUT', `/plans/${id}`, { rev, plan }),
-  remove: (id: string) => call<{ ok: true }>('DELETE', `/plans/${id}`),
+  plans: docs<Plan>('plans', 'plan'),
+  playbooks: docs<Playbook>('playbooks', 'playbook'),
   push: (id: string, repo: string) => call<{ url: string; commit: string; created: boolean }>('POST', `/plans/${id}/push`, { repo }),
 };

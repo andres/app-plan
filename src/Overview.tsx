@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react';
 import type { Plan } from '../shared/schema.ts';
 import type { Update } from './Editor.tsx';
+import { api, type Row } from './api.ts';
 
 type TextKey = 'summary' | 'goals' | 'nonGoals' | 'constraints';
 const TEXTS: [TextKey, string, string][] = [
@@ -10,6 +12,9 @@ const TEXTS: [TextKey, string, string][] = [
 ];
 
 export function Overview({ plan, update }: { plan: Plan; update: Update }) {
+  const [playbooks, setPlaybooks] = useState<Row[]>([]);
+  useEffect(() => void api.playbooks.list().then(setPlaybooks, () => {}), []);
+  const missing = plan.playbookId && playbooks.length > 0 && !playbooks.some((p) => p.id === plan.playbookId);
   const setRole = (i: number, patch: Partial<Plan['roles'][number]>) =>
     update((p) => {
       const old = p.roles[i];
@@ -57,6 +62,23 @@ export function Overview({ plan, update }: { plan: Plan; update: Update }) {
           <button onClick={() => update((p) => ({ ...p, roles: [...p.roles, { name: '', description: '' }] }))}>+ Role</button>
         </div>
       </div>
+      <div className="field">
+        <span>How to build it</span>
+        <p className="muted small">The playbook sets testing, patterns, workflow and skills. Exported as <code>plan/RULES.md</code>.</p>
+        <div className="row">
+          <select value={plan.playbookId} onChange={(e) => { const v = e.target.value; update((p) => ({ ...p, playbookId: v })); }}>
+            <option value="">No playbook</option>
+            {playbooks.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+          {plan.playbookId && !missing && <a className="button" href={`#/playbook/${plan.playbookId}`}>Edit playbook</a>}
+        </div>
+        {missing && <p className="error small">The selected playbook was deleted. Pick another.</p>}
+      </div>
+      <label className="field">
+        <span>Extra rules for this app</span>
+        <textarea rows={3} placeholder={'One per line, added to the playbook. e.g. "Use Postgres row-level security"'} value={plan.extraRules}
+          onChange={(e) => { const v = e.target.value; update((p) => ({ ...p, extraRules: v })); }} />
+      </label>
     </div>
   );
 }
